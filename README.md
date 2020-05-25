@@ -32,7 +32,8 @@ This workshop includes a demonstration of how Spot can be adopted on EKS.
 1. Tracing with X-ray
 1. Partner's solutions
 
-## Why Spot on EKS?
+## Why Spot on EKS
+
 ![Spot strategy](./img/aws-spot.png "AWS pricing models")
 
 * Containers are often stateless, fault-tolerant, and a great fit for Spot Instances
@@ -104,7 +105,6 @@ Configure CloudWatch Event rule which listens to all EC2 events
 ### CloudWatch Container Insights
 
 1. Since we are using different roles for 2 NodeGroups, we will add the additional IAM policy to those roles from the GUI. You can refer to the [Preparing to Install CloudWatch Container Insights](https://eksworkshop.com/intermediate/250_cloudwatch_container_insights/cwcinstallprep/) page for more descriptions of these steps.
-
 1. Complete the [Installing CloudWatch Container Insights](https://eksworkshop.com/intermediate/250_cloudwatch_container_insights/cwcinstall/) page
 
 ## Simulate Spot interruption event
@@ -112,165 +112,156 @@ Configure CloudWatch Event rule which listens to all EC2 events
 Referring to this [page](https://eksworkshop.com/spot/simulateinterrupt/) for description, but the instructions are outdated
 
 1. Login to AWS EC2 Console
+   * In the left hand menu bar, choose Spot Requests
+   * Click on Request Spot Instances button
+   * Launch template: empty (so we can change configuration parameters)
+   * Search for AMI under Amazon AMIs,  refer to old spot’s AMI (e.g. *amazon-eks-node-1.15-v20200507*)
+   * VPC: select *eksworkshop*
+   * Select AZs with valid subnets
+   * Key pair name: eksworkshop
+   * Additional configurations:
+     * Security groups: select both \*ng-spot\* and \*ClusterSharedNodeSecurityGroup\*
+     * IPv4: enabled
+     * IAM instance profile: *ng-spot*
+     * User data
 
-* In the left hand menu bar, choose Spot Requests
-* Click on Request Spot Instances button
-* Launch template: empty (so we can change configuration parameters)
-* Search for AMI under Amazon AMIs,  refer to old spot’s AMI (e.g. *amazon-eks-node-1.15-v20200507*)
-* VPC: select *eksworkshop*
-* Select AZs with valid subnets
-* Key pair name: eksworkshop
-* Additional configurations:
+      ```bash
+      #!/bin/bash
+      set -o xtrace
+      /etc/eks/bootstrap.sh eksworkshop-eksctl --kubelet-extra-args --node-labels=lifecycle=Ec2Spot
+      ```
 
-  * Security groups: select both \*ng-spot\* and \*ClusterSharedNodeSecurityGroup\*
-  * IPv4: enabled
-  * IAM instance profile: *ng-spot*
-  * User data
+     * Tags:
 
-  ```bash
-  #!/bin/bash
-  set -o xtrace
-  /etc/eks/bootstrap.sh eksworkshop-eksctl --kubelet-extra-args --node-labels=lifecycle=Ec2Spot
-  ```
+     |Key|Value|
+     |---|---|
+     |Name|EKSSpot-SpotFleet-Node
+     |`kubernetes.io/cluster/eksworkshop-eksctl`|owned
+     |`k8s.io/cluster-autoscaler`/enabled|true
+     |Spot|true
 
-  * Tags:
-
-  |Key|Value|
-  |---|---|
-  |Name|EKSSpot-SpotFleet-Node
-  |`kubernetes.io/cluster/eksworkshop-eksctl`|owned
-  |`k8s.io/cluster-autoscaler`/enabled|true
-  |Spot|true
-
-* Ensure “Maintain target capacity” is checked. Select **Create**
-* Wait for few minutes (about 8-10)
-
-2. Verify that new nodes are added to the cluster ``kubectl get nodes``. Record the new node ID.
+   * Ensure “Maintain target capacity” is checked. Select **Create**
+   * Wait for few minutes (about 8-10)
+1. Verify that new nodes are added to the cluster ``kubectl get nodes``. Record the new node ID.
 1. Scale up *front-end*. Verify that front-end pods are running on the new spot node.
 
-```bash
-kubectl scale deployment ecsdemo-frontend --replicas 10
-kubectl get pods -o wide
-```
+   ```bash
+   kubectl scale deployment ecsdemo-frontend --replicas 10
+   kubectl get pods -o wide
+   ```
 
-4. Follow the ”interruption handler” pod logs
+1. Follow the ”interruption handler” pod logs
 
-```bash
-kubectl get pods -A -o wide
-```
+   ```bash
+   kubectl get pods -A -o wide
+   ```
 
-Record the termination-handler pod that run on the new spot node. Replace the pod id for *<aws-node-termination-handler-id-*****>* on the command below.
+   Record the termination-handler pod that run on the new spot node. Replace the pod id for *<aws-node-termination-handler-id-*****>* on the command below.
 
-```bash
-kubectl --namespace kube-system logs -f <aws-node-termination-handler-id-*****>
-```
+   ```bash
+   kubectl --namespace kube-system logs -f <aws-node-termination-handler-id-*****>
+   ```
 
-5. [Verify CloudWatch Container Insights is working](https://eksworkshop.com/intermediate/250_cloudwatch_container_insights/verifycwci/)
+1. [Verify CloudWatch Container Insights is working](https://eksworkshop.com/intermediate/250_cloudwatch_container_insights/verifycwci/)
 1. [Preparing your load test](https://eksworkshop.com/intermediate/250_cloudwatch_container_insights/prepareloadtest/)
 1. Get ALB of frontend deployment `kubectl get svc -o wide`. [Running your load test](https://eksworkshop.com/intermediate/250_cloudwatch_container_insights/runloadtest/) for 5 minutes
 
-```bash
-siege -q -t 300S -c 50 -i http://${FE_ALB}
-```
+   ```bash
+   siege -q -t 300S -c 50 -i http://${FE_ALB}
+   ```
 
 1. Reduce the previous Spot Requests down to 0
 1. [Verify metrics on CloudWatch dashboards](https://eksworkshop.com/intermediate/250_cloudwatch_container_insights/viewvetrics/)
 1. After 5 minutes, stop the load test ``ctrl + c`` and verify siege stats with: ``availability: 100.00``
 1. Verify impact to the applications
+   * Termination handler pod log
+   * Spot Requests’ history tab: “termination_notified” event and its timestamp
+   * EC2 instance is shutting down
+   * Verify CloudWatch insights for terminated spot instance
+   * Verify pod was evicted and deployed to other nodes
+  ``kubectl get pods -o wide`` (notice the age)
+1. Verify EC2 spot events through CloudWatch Events. Run CloudWatch insights query: (replace <i-09e6a1b2cff2*****> with the spot instance ID from Spot Requests)
 
-* Termination handler pod log
-* Spot Requests’ history tab: “termination_notified” event and its timestamp
-* EC2 instance is shutting down
-* Verify CloudWatch insights for terminated spot instance
-* Verify pod was evicted and deployed to other nodes
-``kubectl get pods -o wide`` (notice the age)
-
-11. Verify EC2 spot events through CloudWatch Events. Run CloudWatch insights query: (replace <i-09e6a1b2cff2*****> with the spot instance ID from Spot Requests)
-
-```bash
-fields @timestamp, @message, `detail-type`, detail.state
-| sort @timestamp desc
-| limit 20
-| filter `detail.instance-id` = "<i-09e6a1b2cff2*****>"
-```
+   ```bash
+   fields @timestamp, @message, `detail-type`, detail.state
+   | sort @timestamp desc
+   | limit 20
+   | filter `detail.instance-id` = "<i-09e6a1b2cff2*****>"
+   ```
 
 ## Tracing with X-ray
 
 1. Remove previous applications
 
-```bash
-cd ~/environment/ecsdemo-frontend
-kubectl delete -f kubernetes/service.yaml
-kubectl delete -f kubernetes/deployment.yaml
+   ```bash
+   cd ~/environment/ecsdemo-frontend
+   kubectl delete -f kubernetes/service.yaml
+   kubectl delete -f kubernetes/deployment.yaml
 
-cd ~/environment/ecsdemo-crystal
-kubectl delete -f kubernetes/service.yaml
-kubectl delete -f kubernetes/deployment.yaml
+   cd ~/environment/ecsdemo-crystal
+   kubectl delete -f kubernetes/service.yaml
+   kubectl delete -f kubernetes/deployment.yaml
 
-cd ~/environment/ecsdemo-nodejs
-kubectl delete -f kubernetes/service.yaml
-kubectl delete -f kubernetes/deployment.yaml
-```
+   cd ~/environment/ecsdemo-nodejs
+   kubectl delete -f kubernetes/service.yaml
+   kubectl delete -f kubernetes/deployment.yaml
+   ```
 
-2. Going to 100% spot
-
-* Change the ASG for on-demand instances to 0
-* Increase Spot Requests capacity to 2
-
-3. Increase the previous Spot Requests up to 1
+1. Going to 100% spot
+   * Change the ASG for on-demand instances to 0
+   * Increase Spot Requests capacity to 2
+1. Increase the previous Spot Requests up to 1
 1. Read this [X-ray overview page](https://eksworkshop.com/intermediate/245_x-ray/) page
 1. Manually add **AWSXRayDaemonWriteAccess** to spot nodegroup's IAM role (\*ng-spot*)
 1. [Deploy X-ray daemonset](https://eksworkshop.com/intermediate/245_x-ray/x-ray-daemon/)
 1. Deploy example microservices
 
-```bash
-wget https://eksworkshop.com/intermediate/245_x-ray/sample-front.files/x-ray-sample-front-k8s.yml
-wget https://eksworkshop.com/intermediate/245_x-ray/sample-back.files/x-ray-sample-back-k8s.yml
-```
+   ```bash
+   wget https://eksworkshop.com/intermediate/245_x-ray/sample-front.files/x-ray-sample-front-k8s.yml
+   wget https://eksworkshop.com/intermediate/245_x-ray/sample-back.files/x-ray-sample-back-k8s.yml
+   ```
 
-* Configure front and back deployment to have the same affinity and tolerations (as the previous *frontend* deployment)
-* Deploy the example X-ray applications
+   * Configure front and back deployment to have the same affinity and tolerations (as the previous *frontend* deployment)
+   * Deploy the example X-ray applications
 
-```bash
-kubectl apply -f x-ray-sample-front-k8s.yml
-kubectl apply -f x-ray-sample-back-k8s.yml
-```
+   ```bash
+   kubectl apply -f x-ray-sample-front-k8s.yml
+   kubectl apply -f x-ray-sample-back-k8s.yml
+   ```
 
-* Scale both deployments to 10
+   * Scale both deployments to 10
 
-```bash
-kubectl scale deployment x-ray-sample-front-k8s --replicas 10
-kubectl scale deployment x-ray-sample-back-k8s --replicas 10
-```
+   ```bash
+   kubectl scale deployment x-ray-sample-front-k8s --replicas 10
+   kubectl scale deployment x-ray-sample-back-k8s --replicas 10
+   ```
 
-* Verify pods are on all 4 spot nodes
+   * Verify pods are on all 4 spot nodes
 
-```bash
-kubectl get nodes; kubectl get pods -o wide
-```
+   ```bash
+   kubectl get nodes; kubectl get pods -o wide
+   ```
 
-8. Run load test again on new X-ray applications
+1. Run load test again on new X-ray applications
+   * Get service ALB
 
-* Get service ALB
+   ```bash
+   kubectl get svc -o wide
+   ```
 
-```bash
-kubectl get svc -o wide
-```
+   * Run load test. Replace ALB_URL below
 
-* Run load test. Replace ALB_URL below
+   ```bash
+   siege -q -t 300S -c 50 -i <ALB_URL>/api 
+   ```
 
-```bash
-siege -q -t 300S -c 50 -i <ALB_URL>/api 
-```
-
-9. Leave load test running for 5 minutes
+1. Leave load test running for 5 minutes
 1. Interrupt spot instances by reduce Spot Requests capacity from 2 to 0
 1. Verify X-ray panels
 ![xray map](./img/xray-map.png)
 ![xray stats](./img/xray-stats.png)
 ![xray map](./img/xray-map.png)
-
-12. Stop siege load test after 5 minutes. Verify siege stats
+1. Stop siege load test after 5 minutes. Verify siege stats
 ![siege map](./img/siege-stats.png)
 
 ## Clean up
@@ -292,6 +283,7 @@ Go to your Cloud9 Environment, select the environment named **eksworkshop** and 
 ## Partner's solutions
 
 ### Spot.io
+
 * Charge based on cost savings
 * Has algorithm that predicts an instance (based on types/regions) which would be reclaimed and move pods in advance
 * Offload the config operations / monitoring effort
