@@ -83,10 +83,8 @@ Analyse the frontend deployment.yml, pay attention to *affinity*, *matchExpressi
 **Additional notes**
 
 1. **Affinity and anti-affinity** is a property of pods that attracts them to a set of nodes. This is similar to nodeSelector, but
-
-* Offers more flexible matching rules (vs. exact matches)
-* Offers soft/preferences (vs. hard requirement) so pods will always be scheduled
-
+   * Offers more flexible matching rules (vs. exact matches)
+   * Offers soft/preferences (vs. hard requirement) so pods will always be scheduled
 1. **Anti-affinity** (inter-pod affinity)
 Offer constraints against other pods (vs. just node) allowing rules to let/prevent pods co-location.
 
