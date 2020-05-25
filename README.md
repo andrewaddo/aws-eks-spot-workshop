@@ -72,13 +72,12 @@ Complete this [Launch using eksctl](https://eksworkshop.com/030_eksctl/) section
 1. Complete this [Helm CLI installation](https://eksworkshop.com/beginner/060_helm/helm_intro/install/) page
 1. Complete this [Deploy the AWS Node termination handler](https://eksworkshop.com/beginner/150_spotworkers/deployhandler/) page
 
-Remember to `cd ..` to get back to parent directory
-
 Analyse the frontend deployment.yml, pay attention to *affinity*, *matchExpressions*, and *tolerations*
 
 ### Deploy an application on Spot
 
 1. Complete this [Deploy an application on Spot](https://eksworkshop.com/beginner/150_spotworkers/preferspot/) section
+1. Remember to `cd ..` to get back to parent directory
 
 **Additional notes**
 
@@ -104,7 +103,8 @@ Configure CloudWatch Event rule which listens to all EC2 events
 
 ### CloudWatch Container Insights
 
-1. Complete the [Preparing to Install CloudWatch Container Insights](https://eksworkshop.com/intermediate/250_cloudwatch_container_insights/cwcinstallprep/) page
+1. Since we are using different roles for 2 NodeGroups, we will add the additional IAM policy to those roles from the GUI. You can refer to the [Preparing to Install CloudWatch Container Insights](https://eksworkshop.com/intermediate/250_cloudwatch_container_insights/cwcinstallprep/) page for more descriptions of these steps.
+
 1. Complete the [Installing CloudWatch Container Insights](https://eksworkshop.com/intermediate/250_cloudwatch_container_insights/cwcinstall/) page
 
 ## Simulate Spot interruption event
@@ -146,7 +146,14 @@ Referring to this [page](https://eksworkshop.com/spot/simulateinterrupt/) for de
 * Wait for few minutes (about 8-10)
 
 2. Verify that new nodes are added to the cluster ``kubectl get nodes``. Record the new node ID.
-1. Follow the ”interruption handler” pod logs
+1. Scale up *front-end*. Verify that front-end pods are running on the new spot node.
+
+```bash
+kubectl scale deployment ecsdemo-frontend --replicas 10
+kubectl get pods -o wide
+```
+
+4. Follow the ”interruption handler” pod logs
 
 ```bash
 kubectl get pods -A -o wide
@@ -158,11 +165,14 @@ Record the termination-handler pod that run on the new spot node. Replace the po
 kubectl --namespace kube-system logs -f <aws-node-termination-handler-id-*****>
 ```
 
-
-
-4. [Verify CloudWatch Container Insights is working](https://eksworkshop.com/intermediate/250_cloudwatch_container_insights/verifycwci/)
+5. [Verify CloudWatch Container Insights is working](https://eksworkshop.com/intermediate/250_cloudwatch_container_insights/verifycwci/)
 1. [Preparing your load test](https://eksworkshop.com/intermediate/250_cloudwatch_container_insights/prepareloadtest/)
-1. Get ALB of frontend deployment `kubectl get svc -o wide`1. [Running your load test](https://eksworkshop.com/intermediate/250_cloudwatch_container_insights/runloadtest/) for 5 minutes
+1. Get ALB of frontend deployment `kubectl get svc -o wide`. [Running your load test](https://eksworkshop.com/intermediate/250_cloudwatch_container_insights/runloadtest/) for 5 minutes
+
+```bash
+siege -q -t 300S -c 50 -i http://${FE_ALB}
+```
+
 1. Reduce the previous Spot Requests down to 0
 1. [Verify metrics on CloudWatch dashboards](https://eksworkshop.com/intermediate/250_cloudwatch_container_insights/viewvetrics/)
 1. After 5 minutes, stop the load test ``ctrl + c`` and verify siege stats with: ``availability: 100.00``
@@ -226,14 +236,14 @@ kubectl apply -f x-ray-sample-front-k8s.yml
 kubectl apply -f x-ray-sample-back-k8s.yml
 ```
 
-* Scale both deployment to 10
+* Scale both deployments to 10
 
 ```bash
 kubectl scale deployment x-ray-sample-front-k8s --replicas 10
 kubectl scale deployment x-ray-sample-back-k8s --replicas 10
 ```
 
-* Verify pods are all 4 spot nodes
+* Verify pods are on all 4 spot nodes
 
 ```bash
 kubectl get nodes; kubectl get pods -o wide
@@ -250,7 +260,7 @@ kubectl get svc -o wide
 * Run load test. Replace ALB_URL below
 
 ```bash
-siege -c 200 -i <ALB_URL>/api 
+siege -q -t 300S -c 50 -i <ALB_URL>/api 
 ```
 
 9. Leave load test running for 5 minutes
